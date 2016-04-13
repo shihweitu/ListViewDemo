@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">List View Demo</string>
+    <string name="retry_message">Load data fail, tap to retry.</string>
+</resources>

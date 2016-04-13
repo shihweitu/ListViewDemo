@@ -1,0 +1,7 @@
+<resources>
+    <!-- Default screen margins, per the Android Design guidelines. -->
+    <dimen name="recycler_view_padding">8dp</dimen>
+    <dimen name="list_item_gap">14dp</dimen>
+    <dimen name="list_item_progress_height">60dp</dimen>
+    <dimen name="content_padding">10dp</dimen>
+</resources>
