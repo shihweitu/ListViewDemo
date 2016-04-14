@@ -21,7 +21,7 @@ public class Utils {
     public static final boolean DEBUG = false;
     private static final String DEBUG_TAG = "Utils";
 
-    public static URL buildUrl(int start, int count) {
+    public static URL buildUrl(long start, int count) {
         URL url = null;
         String link = String.format("https://hook.io/syshen/infinite-list?startIndex=%d&num=%d"
                 , start, count);

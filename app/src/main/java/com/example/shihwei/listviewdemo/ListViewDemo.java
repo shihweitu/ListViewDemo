@@ -11,7 +11,6 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -27,19 +26,20 @@ import java.util.List;
 public class ListViewDemo extends AppCompatActivity {
     private final boolean DEBUG = Utils.DEBUG;
     private final String DEBUG_TAG = getClass().getSimpleName();
-    private final int LOADED_ITEM_COUNT = 15;
+    private final int LOADED_ITEM_COUNT = 100;
 
     // load more records if upper or lower invisible item count is less than the threshold
-    private final int THRESHOLD_COUNT = 10;
+    private final int THRESHOLD_COUNT = 50;
     private RecyclerView mRecyclerView;
     private ListAdapter mAdapter;
     private LinearLayoutManager mLayoutManager;
     private int mFirstVisibleItemPos = 0;
     private int mLastVisibleItemPos = 0;
-    private int mStartIndex = 0; // start index of current retrieved data
-    private int mEndIndex = LOADED_ITEM_COUNT - 1;
+    private long mEndId = 0;
+    private int mListSize = 0;
     private RequestTask mRequestTask;
-    private boolean loadingFail = false;
+    private boolean mLoadingFail = false;
+    private boolean mLoading = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,19 +61,14 @@ public class ListViewDemo extends AppCompatActivity {
                 mFirstVisibleItemPos = mLayoutManager.findFirstVisibleItemPosition();
                 mLastVisibleItemPos = mLayoutManager.findLastVisibleItemPosition();
 
-                int lowerBound = mEndIndex - THRESHOLD_COUNT;
-
-                if (DEBUG) {
-                    Log.i(DEBUG_TAG, "visible item position from index " + mFirstVisibleItemPos
-                            + " to " + mLastVisibleItemPos + " end index=" + mEndIndex
-                            + " lowerBound=" + lowerBound);
-                }
-
                 // load mode data
-                if (mLastVisibleItemPos == lowerBound) {
-                    mStartIndex = mStartIndex + LOADED_ITEM_COUNT;
-                    mEndIndex = mStartIndex + LOADED_ITEM_COUNT - 1;
+                if (!mLoading && mLastVisibleItemPos > mListSize - THRESHOLD_COUNT) {
                     loadMoreData();
+                }
+                if (DEBUG) {
+                    Log.i(DEBUG_TAG, "visible item from index " + mFirstVisibleItemPos
+                            + " to " + mLastVisibleItemPos
+                            + " total data index to " + mEndId);
                 }
             }
         });
@@ -88,7 +83,7 @@ public class ListViewDemo extends AppCompatActivity {
                 return Utils.retrieveData(urls[0]);
             } catch (IOException e) {
                 Log.e(DEBUG_TAG, "Retrieve record from endpoint fail.");
-                loadingFail = true;
+                mLoadingFail = true;
                 return null;
             }
         }
@@ -96,13 +91,12 @@ public class ListViewDemo extends AppCompatActivity {
         @Override
         protected void onPostExecute(List<Record> list) {
             mAdapter.setList(list);
-            if (loadingFail) {
+            if (mLoadingFail) {
                 mAdapter.mProgressView.mRetryMessage.setVisibility(View.VISIBLE);
                 mAdapter.mProgressView.mProgress.setVisibility(View.INVISIBLE);
-                mEndIndex = mEndIndex - LOADED_ITEM_COUNT;
-                mStartIndex = mEndIndex - LOADED_ITEM_COUNT + 1;
-                loadingFail = false;
+                mLoadingFail = false;
             }
+            mLoading = false;
         }
     }
 
@@ -138,8 +132,6 @@ public class ListViewDemo extends AppCompatActivity {
                 public void onClick(View v) {
                     mAdapter.mProgressView.mRetryMessage.setVisibility(View.INVISIBLE);
                     mAdapter.mProgressView.mProgress.setVisibility(View.VISIBLE);
-                    mStartIndex = mStartIndex + LOADED_ITEM_COUNT;
-                    mEndIndex = mStartIndex + LOADED_ITEM_COUNT - 1;
                     loadMoreData();
                 }
             });
@@ -153,30 +145,39 @@ public class ListViewDemo extends AppCompatActivity {
         private ProgressViewHolder mProgressView;
 
         public ListAdapter() {
-            mList.add(null); // add a null record to show progress circle
+            mList.add(null); // add a null item to show progress circle
         }
 
         public void setList(List<Record> list) {
             if (list == null) {
                 return;
             }
-            final int size = list.size();
-            final int total = mList.size();
+            final int newSize = list.size();
+            final int currentSize = mList.size();
 
             // remove progress item
-            if (total != 0) {
-                if (mList.get(total - 1) == null) {
-                    mList.remove(total - 1);
-                    notifyItemRemoved(total - 1);
+            if (currentSize != 0) {
+                if (mList.get(currentSize - 1) == null) {
+                    mList.remove(currentSize - 1);
+                    notifyItemRemoved(currentSize - 1);
                 }
             }
 
             // add new data
-            for (int i = 0; i < size; i++) {
+            for (int i = 0; i < newSize; i++) {
                 mList.add(list.get(i));
             }
+            mListSize = mList.size();
+            if (mListSize > 0) {
+                mEndId = mList.get(mListSize - 1).getId();
+            }
+            
             mList.add(null); // add one more dummy item to show progress circle
-            notifyDataSetChanged();
+            notifyItemRangeInserted(currentSize - 1, newSize + 1);
+
+            if (DEBUG) {
+                Log.i(DEBUG_TAG, "update data size to " + mListSize + " id to " + mEndId);
+            }
         }
 
         // create item view as ViewHolder
@@ -242,11 +243,16 @@ public class ListViewDemo extends AppCompatActivity {
     }
 
     private void loadMoreData() {
-        if (DEBUG) {
-            Log.i(DEBUG_TAG, "load data from " + mStartIndex
-                    + " to " + (mStartIndex + LOADED_ITEM_COUNT));
+        mLoading = true;
+        long index = mEndId;
+        if (index > 0) {
+            index = index + 1;
         }
         mRequestTask = new RequestTask();
-        mRequestTask.execute(Utils.buildUrl(mStartIndex, LOADED_ITEM_COUNT));
+        mRequestTask.execute(Utils.buildUrl(index, LOADED_ITEM_COUNT));
+
+        if (DEBUG) {
+            Log.i(DEBUG_TAG, "load data from " + index);
+        }
     }
 }
