@@ -26,7 +26,8 @@ import java.util.List;
 public class ListViewDemo extends AppCompatActivity {
     private final boolean DEBUG = Utils.DEBUG;
     private final String DEBUG_TAG = getClass().getSimpleName();
-    private final int LOADED_ITEM_COUNT = 100;
+    private final int MAX_ITEM_COUNT = 200;
+    private final int LOADED_ITEM_COUNT = 50;
 
     // load more records if upper or lower invisible item count is less than the threshold
     private final int THRESHOLD_COUNT = 50;
@@ -35,11 +36,13 @@ public class ListViewDemo extends AppCompatActivity {
     private LinearLayoutManager mLayoutManager;
     private int mFirstVisibleItemPos = 0;
     private int mLastVisibleItemPos = 0;
+    private long mStartId = 0;
     private long mEndId = 0;
     private int mListSize = 0;
     private RequestTask mRequestTask;
     private boolean mLoadingFail = false;
     private boolean mLoading = false;
+    private boolean mLoadDataAfter = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,13 +65,18 @@ public class ListViewDemo extends AppCompatActivity {
                 mLastVisibleItemPos = mLayoutManager.findLastVisibleItemPosition();
 
                 // load mode data
-                if (!mLoading && mLastVisibleItemPos > mListSize - THRESHOLD_COUNT) {
-                    loadMoreData();
+                if (!mLoading) {
+                    if (mLastVisibleItemPos > mListSize - THRESHOLD_COUNT) {
+                        mLoadDataAfter = true;
+                        loadMoreData();
+                    } else if (mStartId > 0 && mFirstVisibleItemPos < THRESHOLD_COUNT) {
+                        mLoadDataAfter = false;
+                        loadMoreData();
+                    }
                 }
                 if (DEBUG) {
                     Log.i(DEBUG_TAG, "visible item from index " + mFirstVisibleItemPos
-                            + " to " + mLastVisibleItemPos
-                            + " total data index to " + mEndId);
+                            + " to " + mLastVisibleItemPos);
                 }
             }
         });
@@ -154,29 +162,73 @@ public class ListViewDemo extends AppCompatActivity {
             }
             final int newSize = list.size();
             final int currentSize = mList.size();
-
-            // remove progress item
-            if (currentSize != 0) {
-                if (mList.get(currentSize - 1) == null) {
-                    mList.remove(currentSize - 1);
-                    notifyItemRemoved(currentSize - 1);
+            if (mLoadDataAfter) {
+                // remove progress item
+                if (currentSize != 0) {
+                    if (mList.get(currentSize - 1) == null) {
+                        mList.remove(currentSize - 1);
+                        notifyItemRemoved(currentSize - 1);
+                    }
                 }
-            }
 
-            // add new data
-            for (int i = 0; i < newSize; i++) {
-                mList.add(list.get(i));
-            }
-            mListSize = mList.size();
-            if (mListSize > 0) {
-                mEndId = mList.get(mListSize - 1).getId();
-            }
-            
-            mList.add(null); // add one more dummy item to show progress circle
-            notifyItemRangeInserted(currentSize - 1, newSize + 1);
+                // add data to current list
+                for (int i = 0; i < newSize; i++) {
+                    mList.add(list.get(i));
+                    if (i == newSize - 1) {
+                        mEndId = list.get(newSize - 1).getId();
+                    }
+                }
+                mListSize = mList.size();
+                mList.add(null); // add progress circle
+                notifyItemRangeInserted(currentSize - 1, newSize + 1);
 
+                // remove data if total data size over a threshold
+                if (mListSize > MAX_ITEM_COUNT) {
+                    int removedSize = mListSize - MAX_ITEM_COUNT;
+                    for (int i = removedSize - 1; i >= 0; i--) {
+                        mList.remove(i);
+                    }
+                    notifyItemRangeRemoved(0, removedSize);
+                    mListSize = mList.size() - 1;
+                }
+
+                // update variables
+                if (mList.size() > 0) {
+                    mStartId = mList.get(0).getId();
+                } else {
+                    mStartId = 0;
+                }
+            } else {
+                List<Record> tmpList = new ArrayList<>(mList);
+                mList.clear();
+                mListSize = 0;
+                int changed = 0;
+                for (int i = 0; i < newSize; i++) {
+                    Record record = list.get(i);
+                    if (i == 0) {
+                        mStartId = record.getId();
+                    }
+                    mList.add(record);
+                    changed ++;
+                    mListSize ++;
+                }
+                int tmpSize = tmpList.size();
+                for (int i = 0; i < tmpSize && mListSize < MAX_ITEM_COUNT; i++) {
+                    Record record = tmpList.get(i);
+                    if (record != null) {
+                        mList.add(record);
+                        mListSize ++;
+                        if (mListSize == MAX_ITEM_COUNT) {
+                            mEndId = record.getId();
+                        }
+                    }
+                }
+                mList.add(null); // progress circle
+                notifyItemRangeInserted(0, changed);
+            }
             if (DEBUG) {
-                Log.i(DEBUG_TAG, "update data size to " + mListSize + " id to " + mEndId);
+                Log.i(DEBUG_TAG, "update data size to " + mListSize
+                        + " id from " + mStartId + " to " + mEndId);
             }
         }
 
@@ -242,11 +294,22 @@ public class ListViewDemo extends AppCompatActivity {
         }
     }
 
+    /**
+     * mLoadDataAfter Decide to load data after or before current dataset
+     */
     private void loadMoreData() {
         mLoading = true;
-        long index = mEndId;
-        if (index > 0) {
-            index = index + 1;
+        long index;
+        if (mLoadDataAfter) {
+            index = mEndId;
+            if (index > 0) {
+                index = index + 1;
+            }
+        } else {
+            index = mStartId - LOADED_ITEM_COUNT;
+            if (index < 0) {
+                index = 0;
+            }
         }
         mRequestTask = new RequestTask();
         mRequestTask.execute(Utils.buildUrl(index, LOADED_ITEM_COUNT));
